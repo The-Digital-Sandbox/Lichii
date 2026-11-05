@@ -87,7 +87,7 @@ inline u64 Now() {
 struct ThreadData {
     std::array<u64, static_cast<size_t>(Zone::Count)> exclusive_ns{};
     std::array<u64, static_cast<size_t>(Zone::Count)> count{};
-    std::array<u64, 16> counters{}; ///< See Counter
+    std::array<u64, 32> counters{}; ///< See Counter
     std::array<u64, static_cast<size_t>(DrainSite::Count)> drain_ns{};
     std::array<u64, static_cast<size_t>(DrainSite::Count)> drain_count{};
     u64 child_ns{};    ///< Time of the zones nested in the current one
@@ -146,6 +146,9 @@ enum class Counter : u32 {
     PtrCacheMisses, ///< EDEN_NX2_HANDLE_PTR_CACHE: handle/descriptor reads, page looked up
     UboInPlaceSame, ///< EDEN_NX2_UBO_INPLACE: small uniform buffers unchanged, nothing copied
     UboInPlaceChanged, ///< EDEN_NX2_UBO_INPLACE: small uniform buffers changed, copied once
+    SsboBinds,      ///< Storage buffer bindings resolved for draws and dispatches
+    SsboMemoHits,   ///< Of SsboBinds: EDEN_NX2_SSBO_MEMO reused the last binding of the slot
+    HandleProgramEvals, ///< Texture handles computed by a handle program at draw time
     Count,
 };
 static_assert(static_cast<size_t>(Counter::Count) <= std::tuple_size_v<decltype(ThreadData::counters)>);
@@ -251,6 +254,18 @@ inline void Report(const char* thread_name = "GPU thread") {
         line += fmt::format(" | uniform buffers compared in place {:.0f} unchanged, {:.0f} changed",
                             static_cast<double>(same) * 1e9 / window,
                             static_cast<double>(changed) * 1e9 / window);
+    }
+    if (const u64 binds = data.counters[static_cast<size_t>(Counter::SsboBinds)],
+        hits = data.counters[static_cast<size_t>(Counter::SsboMemoHits)];
+        binds != 0) {
+        line += fmt::format(" | storage bindings {:.0f} ({:.0f} memoised)",
+                            static_cast<double>(binds) * 1e9 / window,
+                            static_cast<double>(hits) * 1e9 / window);
+    }
+    if (const u64 evals = data.counters[static_cast<size_t>(Counter::HandleProgramEvals)];
+        evals != 0) {
+        line += fmt::format(" | handle programs run {:.0f}",
+                            static_cast<double>(evals) * 1e9 / window);
     }
     std::string drains;
     for (size_t i = 0; i < data.drain_count.size(); ++i) {

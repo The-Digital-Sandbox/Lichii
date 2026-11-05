@@ -6,6 +6,7 @@
 #include "common/common_types.h"
 #include "shader_recompiler/shader_info.h"
 #include "video_core/memory_manager.h"
+#include "video_core/nx2_profile.h"
 
 namespace VideoCommon {
 
@@ -15,11 +16,12 @@ namespace VideoCommon {
 template <typename CbufAddress>
 u32 EvaluateTextureHandle(const Shader::Info& info, u32 program, Tegra::MemoryManager& gpu_memory,
                           CbufAddress&& cbuf_address) {
+    Nx2Profile::Add(Nx2Profile::Counter::HandleProgramEvals, 1);
     return Shader::EvaluateHandleProgram(
                info.handle_programs[program],
                [&](u32 index, u32 offset) -> u32 {
                    const GPUVAddr base{cbuf_address(index)};
-                   return base != 0 ? gpu_memory.Read<u32>(base + offset) : 0U;
+                   return base != 0 ? gpu_memory.ReadHandleWord(base + offset) : 0U;
                },
                [&](u32 binding, u32 offset) -> u32 {
                    if (binding >= info.storage_buffers_descriptors.size()) {
@@ -30,11 +32,11 @@ u32 EvaluateTextureHandle(const Shader::Info& info, u32 program, Tegra::MemoryMa
                    if (cbuf == 0) {
                        return 0U;
                    }
-                   GPUVAddr base{gpu_memory.Read<u64>(cbuf + descriptor.cbuf_offset)};
+                   GPUVAddr base{gpu_memory.ReadHandleQword(cbuf + descriptor.cbuf_offset)};
                    if (base != 0 && descriptor.indirect_offset != ~0U) {
-                       base = gpu_memory.Read<u64>(base + descriptor.indirect_offset);
+                       base = gpu_memory.ReadHandleQword(base + descriptor.indirect_offset);
                    }
-                   return base != 0 ? gpu_memory.Read<u32>(base + offset) : 0U;
+                   return base != 0 ? gpu_memory.ReadHandleWord(base + offset) : 0U;
                })
         .value_or(0U);
 }

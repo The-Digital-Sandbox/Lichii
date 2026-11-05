@@ -77,6 +77,7 @@ add_executable(tests
     video_core/ampere_tennis_tessellation.cpp
     video_core/pipeline_cache_files.cpp
     video_core/storage_binding_capacity.cpp
+    video_core/storage_binding_memo.cpp
     video_core/native_indirect_reset.cpp
     video_core/gpu_command_safety.cpp
     video_core/syncpoint_actions.cpp

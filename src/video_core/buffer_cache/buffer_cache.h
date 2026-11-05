@@ -590,18 +590,18 @@ bool BufferCache<P>::BindGraphicsStorageBuffer(size_t stage, size_t ssbo_index, 
     GPUVAddr holder{};
     if (indirect_offset != ~0U) {
         // The pointer is an entry of a table the constant buffer points to.
-        holder = gpu_memory->Read<u64>(ssbo_addr);
+        holder = gpu_memory->ReadHandleQword(ssbo_addr);
         if (holder == 0) {
             channel_state->storage_buffers[stage][ssbo_index] = NULL_BINDING;
             return false;
         }
         ssbo_addr = holder + indirect_offset;
     }
-    channel_state->storage_buffers[stage][ssbo_index] =
-        StorageBufferBinding(ssbo_addr, cbuf_index, is_written,
-                             maxwell3d->GetNativeMacroEngine().native_turing ||
-                                 indirect_offset != ~0U,
-                             indirect_offset != ~0U);
+    channel_state->storage_buffers[stage][ssbo_index] = MemoisedStorageBufferBinding(
+        channel_state->storage_binding_memos[stage][ssbo_index], ssbo_addr, holder, cbuf_index,
+        is_written,
+        maxwell3d->GetNativeMacroEngine().native_turing || indirect_offset != ~0U,
+        indirect_offset != ~0U);
     if (indirect_offset != ~0U) {
         TraceTablePointer(false, stage, ssbo_index, cbuf_index, cbuf_offset, indirect_offset, holder,
                           channel_state->storage_buffers[stage][ssbo_index]);
@@ -685,15 +685,16 @@ void BufferCache<P>::BindComputeStorageBuffer(size_t ssbo_index, u32 cbuf_index,
     GPUVAddr ssbo_addr = cbufs[cbuf_index].Address() + cbuf_offset;
     GPUVAddr holder{};
     if (indirect_offset != ~0U) {
-        holder = gpu_memory->Read<u64>(ssbo_addr);
+        holder = gpu_memory->ReadHandleQword(ssbo_addr);
         if (holder == 0) {
             channel_state->compute_storage_buffers[ssbo_index] = NULL_BINDING;
             return;
         }
         ssbo_addr = holder + indirect_offset;
     }
-    channel_state->compute_storage_buffers[ssbo_index] = StorageBufferBinding(
-        ssbo_addr, cbuf_index, is_written, kepler_compute->IsNativeMode(), indirect_offset != ~0U);
+    channel_state->compute_storage_buffers[ssbo_index] = MemoisedStorageBufferBinding(
+        channel_state->compute_storage_binding_memos[ssbo_index], ssbo_addr, holder, cbuf_index,
+        is_written, kepler_compute->IsNativeMode(), indirect_offset != ~0U);
     if (indirect_offset != ~0U) {
         TraceTablePointer(true, 0, ssbo_index, cbuf_index, cbuf_offset, indirect_offset, holder,
                           channel_state->compute_storage_buffers[ssbo_index]);
@@ -2693,6 +2694,37 @@ void BufferCache<P>::TraceTablePointer(bool compute, size_t stage, size_t ssbo_i
              frame_tick, compute ? "compute" : "graphics", stage, ssbo_index, cbuf_index,
              cbuf_offset, indirect_offset, holder, entry, binding.device_addr, binding.size,
              gpu_modified, cpu_modified);
+}
+
+template <class P>
+Binding BufferCache<P>::MemoisedStorageBufferBinding(StorageBindingMemo<Binding>& memo,
+                                                     GPUVAddr ssbo_addr, GPUVAddr holder,
+                                                     u32 cbuf_index, bool is_written,
+                                                     bool native_pointer, bool table_pointer) {
+    Nx2Profile::Add(Nx2Profile::Counter::SsboBinds, 1);
+    if (!StorageBindingMemoEnabled()) {
+        return StorageBufferBinding(ssbo_addr, cbuf_index, is_written, native_pointer,
+                                    table_pointer);
+    }
+    // The key holds every input StorageBufferBinding reads: the pointer word, the size word
+    // (read only for a plain NVN-style pointer), the page table generation and the flags.
+    const bool reads_size_word = !native_pointer && !table_pointer;
+    const StorageBindingKey key{
+        .ssbo_addr = ssbo_addr,
+        .holder = holder,
+        .pointer_word = gpu_memory->ReadHandleQword(ssbo_addr),
+        .size_word = reads_size_word ? gpu_memory->ReadHandleQword(ssbo_addr + 8) : u64{0},
+        .map_generation = gpu_memory->MapGeneration(),
+        .flags = (is_written ? 1U : 0U) | (native_pointer ? 2U : 0U) | (table_pointer ? 4U : 0U),
+    };
+    if (const Binding* const found = memo.Find(key)) {
+        Nx2Profile::Add(Nx2Profile::Counter::SsboMemoHits, 1);
+        return *found;
+    }
+    const Binding binding =
+        StorageBufferBinding(ssbo_addr, cbuf_index, is_written, native_pointer, table_pointer);
+    memo.Store(key, binding);
+    return binding;
 }
 
 template <class P>

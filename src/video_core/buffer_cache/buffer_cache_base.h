@@ -35,6 +35,7 @@
 #include "common/slot_vector.h"
 #include "shader_recompiler/shader_info.h"
 #include "video_core/buffer_cache/buffer_base.h"
+#include "video_core/buffer_cache/storage_binding_memo.h"
 #include "video_core/buffer_cache/virtual_range_cache.h"
 #include "video_core/control/channel_state_cache.h"
 #include "video_core/delayed_destruction_ring.h"
@@ -142,6 +143,9 @@ public:
 
     std::array<Binding, NUM_COMPUTE_UNIFORM_BUFFERS> compute_uniform_buffers;
     std::array<Binding, NUM_STORAGE_BUFFERS> compute_storage_buffers;
+    std::array<std::array<StorageBindingMemo<Binding>, NUM_STORAGE_BUFFERS>, NUM_STAGES>
+        storage_binding_memos;
+    std::array<StorageBindingMemo<Binding>, NUM_STORAGE_BUFFERS> compute_storage_binding_memos;
     std::array<TextureBufferBinding, NUM_TEXTURE_BUFFERS> compute_texture_buffers;
 
     std::array<u32, NUM_STAGES> enabled_uniform_buffer_masks{};
@@ -574,6 +578,11 @@ private:
 
     void DeleteBuffer(BufferId buffer_id, bool do_not_mark = false);
 
+    /// StorageBufferBinding through the slot's memo (EDEN_NX2_SSBO_MEMO), see storage_binding_memo.h.
+    [[nodiscard]] Binding MemoisedStorageBufferBinding(StorageBindingMemo<Binding>& memo,
+                                                       GPUVAddr ssbo_addr, GPUVAddr holder,
+                                                       u32 cbuf_index, bool is_written,
+                                                       bool native_pointer, bool table_pointer);
     [[nodiscard]] Binding StorageBufferBinding(GPUVAddr ssbo_addr, u32 cbuf_index, bool is_written,
                                                bool native_pointer = false,
                                                bool table_pointer = false) const;

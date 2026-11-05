@@ -93,6 +93,13 @@ public:
     [[nodiscard]] static bool HandlePointerCacheEnabled();
     /// Read<u32> through the cached page pointers when HandlePointerCacheEnabled.
     [[nodiscard]] u32 ReadHandleWord(GPUVAddr addr) const;
+    /// Read<u64> through the cached page pointers when HandlePointerCacheEnabled.
+    [[nodiscard]] u64 ReadHandleQword(GPUVAddr addr) const;
+    /// Bumped by every map, remap and unmap: a value derived from the page table (layout
+    /// size, continuous range, device address) is current while it is unchanged.
+    [[nodiscard]] u64 MapGeneration() const noexcept {
+        return map_generation.load(std::memory_order_acquire);
+    }
     /// GetPointer through the cached page pointers when HandlePointerCacheEnabled (callers read
     /// within the page of `addr` only).
     [[nodiscard]] const u8* GetPointerForDescriptor(GPUVAddr addr) const;

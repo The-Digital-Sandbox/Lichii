@@ -422,6 +422,21 @@ u32 MemoryManager::ReadHandleWord(GPUVAddr addr) const {
     return value;
 }
 
+u64 MemoryManager::ReadHandleQword(GPUVAddr addr) const {
+    constexpr u64 host_page_mask = (u64{1} << cpu_page_bits) - 1;
+    if (!HandlePointerCacheEnabled() || (addr & host_page_mask) > host_page_mask + 1 - sizeof(u64) ||
+        OverlapsNativeSyncpointShim(addr, sizeof(u64))) {
+        return Read<u64>(addr);
+    }
+    const u8* const host = CachedPagePointer(addr);
+    if (host == nullptr) [[unlikely]] {
+        return Read<u64>(addr);
+    }
+    u64 value;
+    std::memcpy(&value, host, sizeof(u64));
+    return value;
+}
+
 const u8* MemoryManager::GetPointerForDescriptor(GPUVAddr addr) const {
     if (!HandlePointerCacheEnabled()) {
         return GetPointer(addr);
