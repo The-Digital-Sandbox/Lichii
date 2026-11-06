@@ -117,6 +117,16 @@ public:
         return fragment_has_color0_output;
     }
 
+    /// Color components of a render target the fragment shader writes, as VkColorComponentFlags
+    VkColorComponentFlags ColorOutputMask(size_t render_target) const noexcept {
+        return (color_output_mask >> (render_target * 4)) & 0xF;
+    }
+
+    /// Color components the fragment shader writes, 4 bits per render target
+    u32 ColorOutputMask() const noexcept {
+        return color_output_mask;
+    }
+
     /// Texture handles of the last configured draw whose handle program gave 0.
     u32 ZeroTextureHandles() const noexcept {
         return zero_texture_handles;
@@ -223,6 +233,7 @@ private:
     u32 num_textures{};
     bool fragment_has_color0_output{};
     u32 zero_texture_handles{};
+    u32 color_output_mask{};
     bool writes_storage{};
 
     vk::DescriptorSetLayout descriptor_set_layout;
