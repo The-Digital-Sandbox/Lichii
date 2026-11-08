@@ -1891,12 +1891,24 @@ void TextureCache<P>::RefreshContents(Image& image, ImageId image_id) {
                              ImageFlagBits::SparseTiles | ImageFlagBits::Unbacked)) &&
         stale_pages.IsAll(image.cpu_addr, image.guest_size_bytes)) {
         if (!Tegra::Nx2MayBeGpuWritten(image.cpu_addr, image.guest_size_bytes)) {
-            ++tc_stale_skips;
-            tc_stale_skip_bytes += image.guest_size_bytes;
-            runtime.TransitionImageLayout(image);
-            return;
+            // The upload this skips copied bytes the GPU's result never reached, which a title
+            // that reads an image before it writes it (Ocarina of Time's fog volume and sky,
+            // accumulated over frames) then saw as its starting point. A fresh host image holds
+            // whatever the driver left in its memory instead, and that garbage feeds back forever:
+            // a white slab over the horizon, speckled clouds. Clear it to zero, which is what
+            // such memory holds on the guest, and skip the upload only when the clear can run.
+            bool cleared = false;
+            if constexpr (requires { runtime.ClearImageToZero(image); }) {
+                cleared = runtime.ClearImageToZero(image);
+            }
+            if (cleared) {
+                ++tc_stale_skips;
+                tc_stale_skip_bytes += image.guest_size_bytes;
+                return;
+            }
+        } else {
+            ++tc_stale_gpu_written;
         }
-        ++tc_stale_gpu_written;
     }
 
     if (True(image.flags & ImageFlagBits::SparseLayers)) {

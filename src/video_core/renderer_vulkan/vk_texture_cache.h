@@ -194,6 +194,11 @@ public:
 
     void TransitionImageLayout(Image& image);
 
+    /// Gives an image defined contents without an upload: records a clear of every level and
+    /// layer to zero, leaving it in the general layout. False, with nothing recorded, for a
+    /// compressed format, which the clear commands don't take.
+    [[nodiscard]] bool ClearImageToZero(Image& image);
+
     bool HasBrokenTextureViewFormats() const noexcept {
         // No known Vulkan driver has broken image views
         return false;
